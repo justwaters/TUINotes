@@ -63,6 +63,12 @@ type Model struct {
 	// exactly match the height it was asked for (e.g. a note with long
 	// wrapped lines).
 	contentH int
+	// navW/editorW are total box widths (border+padding+content) that
+	// renderPane applies via lipgloss .Width() — a bordered box otherwise
+	// shrinks to fit its content, so a folder tree with short names would
+	// render narrower than one with long names instead of holding a
+	// constant one-third split.
+	navW, editorW int
 }
 
 // New builds the initial Model. Loading real data happens in Init/Update.
@@ -561,20 +567,21 @@ func (m *Model) resize() {
 		innerH = 3
 	}
 	m.contentH = innerH
-	remaining := m.width - chromePerPane*2
-	if remaining < 30 {
-		remaining = 30
-	}
-	navW := remaining * 32 / 100
-	if navW < 24 {
-		navW = 24
-	}
-	editorW := remaining - navW
-	if editorW < 20 {
-		editorW = 20
-	}
-	m.navList.SetSize(navW, innerH)
-	m.editor.SetWidth(editorW)
+
+	// navW/editorW are total box widths (border+padding+content — what
+	// lipgloss .Width() expects), always exactly a third/two-thirds of the
+	// full terminal width. No minimums pulling either pane off that ratio
+	// as the terminal resizes: a bordered box otherwise shrinks to fit its
+	// content by default, so renderPane must apply these explicitly, or a
+	// short nav item (e.g. "▸ Church") renders a narrower box than a long
+	// one instead of a constant split.
+	m.navW = m.width / 3
+	m.editorW = m.width - m.navW
+
+	navContentW := max(m.navW-chromePerPane, 1)
+	editorContentW := max(m.editorW-chromePerPane, 1)
+	m.navList.SetSize(navContentW, innerH)
+	m.editor.SetWidth(editorContentW)
 	m.editor.SetHeight(innerH)
 	if m.haveSearchList {
 		m.searchList.SetSize(m.width-2, m.height-3)
@@ -599,7 +606,7 @@ func (m Model) View() tea.View {
 		return v
 	}
 
-	navPane := m.renderPane("Navigation", m.navList.View(), m.focus == focusNav)
+	navPane := m.renderPane("Navigation", m.navList.View(), m.navW, m.focus == focusNav)
 
 	editorContent := m.editor.View()
 	if !m.haveNote && !m.editing {
@@ -609,7 +616,7 @@ func (m Model) View() tea.View {
 	if m.editing {
 		editorLabel = "Editing"
 	}
-	editorPane := m.renderPane(editorLabel, editorContent, m.focus == focusEditor)
+	editorPane := m.renderPane(editorLabel, editorContent, m.editorW, m.focus == focusEditor)
 
 	row := lipgloss.JoinHorizontal(lipgloss.Top, navPane, editorPane)
 	v := tea.NewView(row + "\n" + m.statusBar())
@@ -617,12 +624,12 @@ func (m Model) View() tea.View {
 	return v
 }
 
-func (m Model) renderPane(title, content string, focused bool) string {
+func (m Model) renderPane(title, content string, width int, focused bool) string {
 	style := paneStyle
 	if focused {
 		style = paneStyleFocused
 	}
-	return style.Render(titleStyle.Render(title) + "\n" + fitHeight(content, m.contentH))
+	return style.Width(width).Render(titleStyle.Render(title) + "\n" + fitHeight(content, m.contentH))
 }
 
 // fitHeight clips or blank-pads content to exactly n lines.
