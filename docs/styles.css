@@ -300,6 +300,7 @@ section h2 {
 }
 
 section p {
+  margin: 0 0 16px;
   color: var(--text-dim);
   max-width: 62ch;
 }
