@@ -77,10 +77,16 @@ way when you open it.
 
 ## v1 limitations
 
-- **No checklists yet, and no other rich formatting.** Bold, italics,
-  headings, colors, and checklists applied in the Notes app are dropped to
-  plain text if you edit and save that note in TUINotes (lists are the
-  exception — see above).
+- **No checklists, and this one isn't fixable from inside TUINotes.**
+  Checklist state isn't exposed anywhere in Notes.app's scripting
+  interface — a checklist's `body` HTML is byte-for-byte identical to a
+  plain bulleted list, confirmed against a real checklist note. TUINotes
+  can't tell the two apart, so if you edit and save a note containing a
+  checklist, it comes back as a plain bulleted list and the checkboxes are
+  gone. Don't edit checklist notes in TUINotes.
+- **No other rich formatting.** Bold, italics, headings, and colors
+  applied in the Notes app are dropped to plain text if you edit and save
+  that note in TUINotes (lists are the exception — see above).
 - **No attachment editing.** Notes with attachments (images, scans,
   drawings, tables) open in view-only mode — TUINotes refuses to save over
   them, since it has no way to preserve attachment markup.

@@ -336,13 +336,12 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 		m.expandedFolders[it.ID] = expanding
 		if expanding {
 			if _, ok := m.noteMetaCache[it.ID]; !ok {
-				m.rebuildNavItems()
+				cmd := m.rebuildNavItems()
 				m.status = "Loading notes..."
-				return m, loadNotesCmd(m.client, it.ID)
+				return m, tea.Batch(cmd, loadNotesCmd(m.client, it.ID))
 			}
 		}
-		m.rebuildNavItems()
-		return m, nil
+		return m, m.rebuildNavItems()
 	case noteNavItem:
 		m.selectedFolderID = it.FolderID
 		m.status = "Loading note..."
@@ -361,7 +360,7 @@ func (m Model) openSearchResult(r notes.SearchResult) (tea.Model, tea.Cmd) {
 	if _, ok := m.noteMetaCache[r.FolderID]; !ok {
 		cmds = append(cmds, loadNotesCmd(m.client, r.FolderID))
 	}
-	m.rebuildNavItems()
+	cmds = append(cmds, m.rebuildNavItems())
 	for i, item := range m.navList.Items() {
 		if fi, ok := item.(folderNavItem); ok && fi.ID == r.FolderID {
 			m.navList.Select(i)
@@ -397,7 +396,12 @@ func (m *Model) expandFolderAndAncestors(folderID string) {
 // is already in parent-before-children order (orderFoldersAsTree), so a
 // collapsed folder's entire subtree — nested folders and notes alike — is
 // skipped by tracking the depth we're currently hiding below.
-func (m *Model) rebuildNavItems() {
+//
+// list.Model.SetItems returns a tea.Cmd that recomputes the active filter
+// against the new items; callers must return it (or batch it with their
+// own Cmd). Dropping it leaves a stale, usually-empty filtered view — the
+// list looks "stuck" showing no items until the filter is cleared.
+func (m *Model) rebuildNavItems() tea.Cmd {
 	var items []list.Item
 	skipBelowDepth := -1
 	for _, f := range m.folders {
@@ -416,7 +420,7 @@ func (m *Model) rebuildNavItems() {
 			skipBelowDepth = f.Depth
 		}
 	}
-	m.navList.SetItems(items)
+	return m.navList.SetItems(items)
 }
 
 func (m Model) handleAccountsLoaded(msg accountsLoadedMsg) (tea.Model, tea.Cmd) {
@@ -426,8 +430,7 @@ func (m Model) handleAccountsLoaded(msg accountsLoadedMsg) (tea.Model, tea.Cmd) 
 	}
 	m.accounts = msg.accounts
 	m.folders = orderFoldersAsTree(msg.folders)
-	m.rebuildNavItems()
-	return m, nil
+	return m, m.rebuildNavItems()
 }
 
 func (m Model) handleNotesLoaded(msg notesLoadedMsg) (tea.Model, tea.Cmd) {
@@ -437,8 +440,8 @@ func (m Model) handleNotesLoaded(msg notesLoadedMsg) (tea.Model, tea.Cmd) {
 	}
 	m.noteMetaCache[msg.folderID] = msg.metas
 	if m.expandedFolders[msg.folderID] {
-		m.rebuildNavItems()
 		m.status = ""
+		return m, m.rebuildNavItems()
 	}
 	return m, nil
 }
@@ -477,8 +480,9 @@ func (m Model) handleNoteSaved(msg noteSavedMsg) (tea.Model, tea.Cmd) {
 		metas = append([]notes.NoteMeta{msg.note.NoteMeta}, metas...)
 	}
 	m.noteMetaCache[msg.folderID] = metas
+	var cmd tea.Cmd
 	if m.expandedFolders[msg.folderID] {
-		m.rebuildNavItems()
+		cmd = m.rebuildNavItems()
 	}
 	m.currentNote = msg.note
 	m.haveNote = true
@@ -488,7 +492,7 @@ func (m Model) handleNoteSaved(msg noteSavedMsg) (tea.Model, tea.Cmd) {
 	m.dirty = false
 	m.focus = focusEditor
 	m.status = "Saved"
-	return m, nil
+	return m, cmd
 }
 
 func (m Model) handleNoteDeleted(msg noteDeletedMsg) (tea.Model, tea.Cmd) {
@@ -504,8 +508,9 @@ func (m Model) handleNoteDeleted(msg noteDeletedMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	m.noteMetaCache[msg.folderID] = kept
+	var cmd tea.Cmd
 	if m.expandedFolders[msg.folderID] {
-		m.rebuildNavItems()
+		cmd = m.rebuildNavItems()
 	}
 	if m.haveNote && m.currentNote.ID == msg.noteID {
 		m.haveNote = false
@@ -513,7 +518,7 @@ func (m Model) handleNoteDeleted(msg noteDeletedMsg) (tea.Model, tea.Cmd) {
 		m.editor.SetValue("")
 	}
 	m.status = "Deleted"
-	return m, nil
+	return m, cmd
 }
 
 func (m Model) handleSearchResults(msg searchResultsMsg) (tea.Model, tea.Cmd) {
