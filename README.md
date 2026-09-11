@@ -77,13 +77,16 @@ way when you open it.
 
 ## v1 limitations
 
-- **No checklists, and this one isn't fixable from inside TUINotes.**
-  Checklist state isn't exposed anywhere in Notes.app's scripting
-  interface — a checklist's `body` HTML is byte-for-byte identical to a
-  plain bulleted list, confirmed against a real checklist note. TUINotes
-  can't tell the two apart, so if you edit and save a note containing a
-  checklist, it comes back as a plain bulleted list and the checkboxes are
-  gone. Don't edit checklist notes in TUINotes.
+- **Checklists show up as bulleted lists.** A checklist's `body` HTML is
+  byte-for-byte identical to a plain bulleted list through Notes.app's
+  scripting interface — confirmed against a real checklist note — so
+  TUINotes can't tell the two apart. Editing and saving a checklist note
+  turns it into a plain bulleted list; the checkboxes don't come back.
+  (There is a way to create real checklists — macOS's Markdown-import
+  pipeline via `open -a Notes` — but it requires Full Disk Access and
+  Accessibility permissions, flashes the Notes.app window on screen per
+  note, and only works for brand-new notes, not editing existing ones. Not
+  worth the tradeoff for this project.)
 - **No other rich formatting.** Bold, italics, headings, and colors
   applied in the Notes app are dropped to plain text if you edit and save
   that note in TUINotes (lists are the exception — see above).
