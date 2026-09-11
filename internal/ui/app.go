@@ -56,6 +56,13 @@ type Model struct {
 	status string
 
 	width, height int
+	// contentH is the content height (excluding the pane's own border and
+	// title row) that navList/editor were sized to. renderPane clips/pads
+	// to exactly this many lines so the two side-by-side panes' borders
+	// stay aligned even if a component's rendered line count doesn't
+	// exactly match the height it was asked for (e.g. a note with long
+	// wrapped lines).
+	contentH int
 }
 
 // New builds the initial Model. Loading real data happens in Init/Update.
@@ -169,6 +176,31 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// Viewing (not editing) a note: the textarea ignores input while
+	// blurred, so scroll it explicitly instead of leaving the pane inert.
+	if m.focus == focusEditor && !m.editing && m.haveNote {
+		switch msg.String() {
+		case "up", "k":
+			m.editor.CursorUp()
+			return m, nil
+		case "down", "j":
+			m.editor.CursorDown()
+			return m, nil
+		case "pgup":
+			m.editor.PageUp()
+			return m, nil
+		case "pgdown":
+			m.editor.PageDown()
+			return m, nil
+		case "home", "g":
+			m.editor.MoveToBegin()
+			return m, nil
+		case "end", "G":
+			m.editor.MoveToEnd()
+			return m, nil
+		}
+	}
+
 	if m.focus == focusSearch {
 		if m.searchList.FilterState() == list.Filtering {
 			var cmd tea.Cmd
@@ -196,6 +228,12 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.navList, cmd = m.navList.Update(msg)
 		return m, cmd
 	}
+
+	// We're in plain browsing mode (not editing, not confirming a delete,
+	// not searching). Clear any leftover toast (e.g. "Saved") so the
+	// keybinding hint reappears; whatever this key does will set its own
+	// status if it needs to.
+	m.status = ""
 
 	switch {
 	case key.Matches(msg, keyQuit):
@@ -315,7 +353,7 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 
 func (m Model) openSearchResult(r notes.SearchResult) (tea.Model, tea.Cmd) {
 	m.selectedFolderID = r.FolderID
-	m.expandedFolders[r.FolderID] = true
+	m.expandFolderAndAncestors(r.FolderID)
 	m.focus = focusNav
 	m.status = "Loading note..."
 
@@ -334,17 +372,48 @@ func (m Model) openSearchResult(r notes.SearchResult) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-// rebuildNavItems recomputes the flattened tree of folders (and, for each
-// expanded folder, its cached notes) shown in navList.
+// expandFolderAndAncestors marks folderID and every folder above it in the
+// tree as expanded, so a folder reached via search (which may be nested
+// several levels deep) is actually visible in the collapsed-by-default tree.
+func (m *Model) expandFolderAndAncestors(folderID string) {
+	byID := make(map[string]folderWithAccount, len(m.folders))
+	for _, f := range m.folders {
+		byID[f.ID] = f
+	}
+	for id := folderID; id != ""; {
+		m.expandedFolders[id] = true
+		f, ok := byID[id]
+		if !ok {
+			return
+		}
+		if _, parentIsFolder := byID[f.ParentID]; !parentIsFolder {
+			return // parent is the account itself; id was a top-level folder
+		}
+		id = f.ParentID
+	}
+}
+
+// rebuildNavItems recomputes the flattened tree shown in navList. m.folders
+// is already in parent-before-children order (orderFoldersAsTree), so a
+// collapsed folder's entire subtree — nested folders and notes alike — is
+// skipped by tracking the depth we're currently hiding below.
 func (m *Model) rebuildNavItems() {
 	var items []list.Item
+	skipBelowDepth := -1
 	for _, f := range m.folders {
+		if skipBelowDepth != -1 && f.Depth > skipBelowDepth {
+			continue // inside a collapsed ancestor
+		}
+		skipBelowDepth = -1
+
 		expanded := m.expandedFolders[f.ID]
 		items = append(items, folderNavItem{Folder: f.Folder, Depth: f.Depth, Expanded: expanded})
 		if expanded {
 			for _, meta := range m.noteMetaCache[f.ID] {
 				items = append(items, noteNavItem{meta: meta, FolderID: f.ID, Depth: f.Depth + 1})
 			}
+		} else {
+			skipBelowDepth = f.Depth
 		}
 	}
 	m.navList.SetItems(items)
@@ -357,16 +426,8 @@ func (m Model) handleAccountsLoaded(msg accountsLoadedMsg) (tea.Model, tea.Cmd) 
 	}
 	m.accounts = msg.accounts
 	m.folders = orderFoldersAsTree(msg.folders)
-
-	var cmd tea.Cmd
-	if len(m.folders) > 0 && m.selectedFolderID == "" {
-		first := m.folders[0]
-		m.selectedFolderID = first.ID
-		m.expandedFolders[first.ID] = true
-		cmd = loadNotesCmd(m.client, first.ID)
-	}
 	m.rebuildNavItems()
-	return m, cmd
+	return m, nil
 }
 
 func (m Model) handleNotesLoaded(msg notesLoadedMsg) (tea.Model, tea.Cmd) {
@@ -494,6 +555,7 @@ func (m *Model) resize() {
 	if innerH < 3 {
 		innerH = 3
 	}
+	m.contentH = innerH
 	remaining := m.width - chromePerPane*2
 	if remaining < 30 {
 		remaining = 30
@@ -555,7 +617,22 @@ func (m Model) renderPane(title, content string, focused bool) string {
 	if focused {
 		style = paneStyleFocused
 	}
-	return style.Render(titleStyle.Render(title) + "\n" + content)
+	return style.Render(titleStyle.Render(title) + "\n" + fitHeight(content, m.contentH))
+}
+
+// fitHeight clips or blank-pads content to exactly n lines.
+func fitHeight(content string, n int) string {
+	if n < 0 {
+		return content
+	}
+	lines := strings.Split(content, "\n")
+	if len(lines) > n {
+		lines = lines[:n]
+	}
+	for len(lines) < n {
+		lines = append(lines, "")
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m Model) statusBar() string {
