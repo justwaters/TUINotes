@@ -1,5 +1,6 @@
-// Package ui implements the Bubble Tea TUI: a three-pane Notes.app-style
-// layout (folders | notes | note content) plus a full-text search overlay.
+// Package ui implements the Bubble Tea TUI: a navigation tree (folders,
+// with their notes nested underneath) next to a note content pane, plus a
+// full-text search overlay.
 package ui
 
 import (
@@ -18,8 +19,7 @@ import (
 type focus int
 
 const (
-	focusFolders focus = iota
-	focusNotes
+	focusNav focus = iota
 	focusEditor
 	focusSearch
 )
@@ -31,12 +31,12 @@ type Model struct {
 	focus focus
 
 	accounts []notes.Account
-	folders  []folderWithAccount
+	folders  []folderWithAccount // tree order (see orderFoldersAsTree), Depth set
 
-	folderList list.Model
-	noteList   list.Model
-	editor     textarea.Model
+	navList list.Model
+	editor  textarea.Model
 
+	expandedFolders  map[string]bool
 	selectedFolderID string
 	noteMetaCache    map[string][]notes.NoteMeta
 
@@ -60,27 +60,22 @@ type Model struct {
 
 // New builds the initial Model. Loading real data happens in Init/Update.
 func New(client *notes.Client) Model {
-	folderList := list.New(nil, list.NewDefaultDelegate(), 20, 10)
-	folderList.SetShowTitle(false)
-	folderList.SetShowStatusBar(false)
-	folderList.SetShowHelp(false)
-
-	noteList := list.New(nil, list.NewDefaultDelegate(), 20, 10)
-	noteList.SetShowTitle(false)
-	noteList.SetShowStatusBar(false)
-	noteList.SetShowHelp(false)
+	navList := list.New(nil, list.NewDefaultDelegate(), 20, 10)
+	navList.SetShowTitle(false)
+	navList.SetShowStatusBar(false)
+	navList.SetShowHelp(false)
 
 	ta := textarea.New()
 	ta.Placeholder = "Select a note to view it here."
 	ta.ShowLineNumbers = false
 
 	return Model{
-		client:        client,
-		focus:         focusFolders,
-		folderList:    folderList,
-		noteList:      noteList,
-		editor:        ta,
-		noteMetaCache: map[string][]notes.NoteMeta{},
+		client:          client,
+		focus:           focusNav,
+		navList:         navList,
+		editor:          ta,
+		expandedFolders: map[string]bool{},
+		noteMetaCache:   map[string][]notes.NoteMeta{},
 	}
 }
 
@@ -117,9 +112,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.editor, cmd = m.editor.Update(msg)
 	cmds = append(cmds, cmd)
-	m.folderList, cmd = m.folderList.Update(msg)
-	cmds = append(cmds, cmd)
-	m.noteList, cmd = m.noteList.Update(msg)
+	m.navList, cmd = m.navList.Update(msg)
 	cmds = append(cmds, cmd)
 	if m.haveSearchList {
 		m.searchList, cmd = m.searchList.Update(msg)
@@ -164,7 +157,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			if m.haveNote {
 				return m, updateNoteCmd(m.client, m.currentNote.ID, m.currentNote.FolderID, text)
 			}
-			return m, createNoteCmd(m.client, m.selectedFolderID, text)
+			return m, createNoteCmd(m.client, m.newNoteFolderID(), text)
 		default:
 			var cmd tea.Cmd
 			m.editor, cmd = m.editor.Update(msg)
@@ -181,7 +174,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		switch {
 		case key.Matches(msg, keyCancel):
-			m.focus = focusNotes
+			m.focus = focusNav
 			return m, nil
 		case key.Matches(msg, keyEnter):
 			if it, ok := m.searchList.SelectedItem().(searchItem); ok {
@@ -195,8 +188,10 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	if m.focusedListFilterState() == list.Filtering {
-		return m.updateFocusedList(msg)
+	if m.focus == focusNav && m.navList.FilterState() == list.Filtering {
+		var cmd tea.Cmd
+		m.navList, cmd = m.navList.Update(msg)
+		return m, cmd
 	}
 
 	switch {
@@ -217,10 +212,12 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, keyRefresh):
 		return m.refresh()
 	case key.Matches(msg, keyNew):
-		if m.selectedFolderID == "" {
+		folderID := m.newNoteFolderID()
+		if folderID == "" {
 			m.status = "Select a folder first"
 			return m, nil
 		}
+		m.selectedFolderID = folderID
 		m.haveNote = false
 		m.currentNote = notes.Note{}
 		m.editor.SetValue("")
@@ -245,45 +242,40 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.status = "Editing — ctrl+s to save, esc to cancel"
 		return m, nil
 	case key.Matches(msg, keyDelete):
-		if m.focus == focusNotes {
-			if it, ok := m.noteList.SelectedItem().(noteItem); ok {
-				m.confirmingDelete = true
-				m.pendingDeleteID = it.meta.ID
-				m.pendingDeleteFolderID = m.selectedFolderID
-				m.status = fmt.Sprintf("Delete %q? (y/n)", it.meta.Name)
-			}
+		if it, ok := m.navList.SelectedItem().(noteNavItem); ok {
+			m.confirmingDelete = true
+			m.pendingDeleteID = it.meta.ID
+			m.pendingDeleteFolderID = it.FolderID
+			m.status = fmt.Sprintf("Delete %q? (y/n)", it.meta.Name)
 		}
 		return m, nil
 	case key.Matches(msg, keyEnter):
 		return m.handleEnter()
 	default:
-		return m.updateFocusedList(msg)
+		if m.focus == focusNav {
+			var cmd tea.Cmd
+			m.navList, cmd = m.navList.Update(msg)
+			return m, cmd
+		}
+		return m, nil
 	}
 }
 
-func (m Model) focusedListFilterState() list.FilterState {
-	switch m.focus {
-	case focusFolders:
-		return m.folderList.FilterState()
-	case focusNotes:
-		return m.noteList.FilterState()
+// newNoteFolderID returns the folder a new note (or an in-progress new
+// note's save) should go into: the selected folder, or the parent of the
+// selected note.
+func (m Model) newNoteFolderID() string {
+	switch it := m.navList.SelectedItem().(type) {
+	case folderNavItem:
+		return it.ID
+	case noteNavItem:
+		return it.FolderID
 	}
-	return list.Unfiltered
-}
-
-func (m Model) updateFocusedList(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
-	switch m.focus {
-	case focusFolders:
-		m.folderList, cmd = m.folderList.Update(msg)
-	case focusNotes:
-		m.noteList, cmd = m.noteList.Update(msg)
-	}
-	return m, cmd
+	return m.selectedFolderID
 }
 
 func (m *Model) cycleFocus(dir int) {
-	order := []focus{focusFolders, focusNotes, focusEditor}
+	order := []focus{focusNav, focusEditor}
 	cur := 0
 	for i, f := range order {
 		if f == m.focus {
@@ -293,54 +285,66 @@ func (m *Model) cycleFocus(dir int) {
 	m.focus = order[(cur+dir+len(order))%len(order)]
 }
 
+// handleEnter toggles a folder's expansion (lazily loading its notes) or
+// opens a note.
 func (m Model) handleEnter() (tea.Model, tea.Cmd) {
-	switch m.focus {
-	case focusFolders:
-		if it, ok := m.folderList.SelectedItem().(folderItem); ok {
-			m.selectedFolderID = it.ID
-			m.focus = focusNotes
-			if metas, ok := m.noteMetaCache[it.ID]; ok {
-				m.setNoteListItems(metas)
-				return m, nil
+	switch it := m.navList.SelectedItem().(type) {
+	case folderNavItem:
+		m.selectedFolderID = it.ID
+		expanding := !m.expandedFolders[it.ID]
+		m.expandedFolders[it.ID] = expanding
+		if expanding {
+			if _, ok := m.noteMetaCache[it.ID]; !ok {
+				m.rebuildNavItems()
+				m.status = "Loading notes..."
+				return m, loadNotesCmd(m.client, it.ID)
 			}
-			m.status = "Loading notes..."
-			return m, loadNotesCmd(m.client, it.ID)
 		}
-	case focusNotes:
-		if it, ok := m.noteList.SelectedItem().(noteItem); ok {
-			m.status = "Loading note..."
-			return m, loadNoteCmd(m.client, it.meta.ID)
-		}
+		m.rebuildNavItems()
+		return m, nil
+	case noteNavItem:
+		m.selectedFolderID = it.FolderID
+		m.status = "Loading note..."
+		return m, loadNoteCmd(m.client, it.meta.ID)
 	}
 	return m, nil
 }
 
 func (m Model) openSearchResult(r notes.SearchResult) (tea.Model, tea.Cmd) {
 	m.selectedFolderID = r.FolderID
-	for i, f := range m.folders {
-		if f.ID == r.FolderID {
-			m.folderList.Select(i)
+	m.expandedFolders[r.FolderID] = true
+	m.focus = focusNav
+	m.status = "Loading note..."
+
+	var cmds []tea.Cmd
+	if _, ok := m.noteMetaCache[r.FolderID]; !ok {
+		cmds = append(cmds, loadNotesCmd(m.client, r.FolderID))
+	}
+	m.rebuildNavItems()
+	for i, item := range m.navList.Items() {
+		if fi, ok := item.(folderNavItem); ok && fi.ID == r.FolderID {
+			m.navList.Select(i)
 			break
 		}
-	}
-	m.focus = focusNotes
-	m.status = "Loading note..."
-	var cmds []tea.Cmd
-	if metas, ok := m.noteMetaCache[r.FolderID]; ok {
-		m.setNoteListItems(metas)
-	} else {
-		cmds = append(cmds, loadNotesCmd(m.client, r.FolderID))
 	}
 	cmds = append(cmds, loadNoteCmd(m.client, r.ID))
 	return m, tea.Batch(cmds...)
 }
 
-func (m *Model) setNoteListItems(metas []notes.NoteMeta) {
-	items := make([]list.Item, len(metas))
-	for i, meta := range metas {
-		items[i] = noteItem{meta: meta}
+// rebuildNavItems recomputes the flattened tree of folders (and, for each
+// expanded folder, its cached notes) shown in navList.
+func (m *Model) rebuildNavItems() {
+	var items []list.Item
+	for _, f := range m.folders {
+		expanded := m.expandedFolders[f.ID]
+		items = append(items, folderNavItem{Folder: f.Folder, Depth: f.Depth, Expanded: expanded})
+		if expanded {
+			for _, meta := range m.noteMetaCache[f.ID] {
+				items = append(items, noteNavItem{meta: meta, FolderID: f.ID, Depth: f.Depth + 1})
+			}
+		}
 	}
-	m.noteList.SetItems(items)
+	m.navList.SetItems(items)
 }
 
 func (m Model) handleAccountsLoaded(msg accountsLoadedMsg) (tea.Model, tea.Cmd) {
@@ -349,17 +353,17 @@ func (m Model) handleAccountsLoaded(msg accountsLoadedMsg) (tea.Model, tea.Cmd) 
 		return m, nil
 	}
 	m.accounts = msg.accounts
-	m.folders = msg.folders
-	items := make([]list.Item, len(msg.folders))
-	for i, f := range msg.folders {
-		items[i] = folderItem{Folder: f.Folder}
+	m.folders = orderFoldersAsTree(msg.folders)
+
+	var cmd tea.Cmd
+	if len(m.folders) > 0 && m.selectedFolderID == "" {
+		first := m.folders[0]
+		m.selectedFolderID = first.ID
+		m.expandedFolders[first.ID] = true
+		cmd = loadNotesCmd(m.client, first.ID)
 	}
-	m.folderList.SetItems(items)
-	if len(msg.folders) > 0 && m.selectedFolderID == "" {
-		m.selectedFolderID = msg.folders[0].ID
-		return m, loadNotesCmd(m.client, msg.folders[0].ID)
-	}
-	return m, nil
+	m.rebuildNavItems()
+	return m, cmd
 }
 
 func (m Model) handleNotesLoaded(msg notesLoadedMsg) (tea.Model, tea.Cmd) {
@@ -368,8 +372,8 @@ func (m Model) handleNotesLoaded(msg notesLoadedMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.noteMetaCache[msg.folderID] = msg.metas
-	if msg.folderID == m.selectedFolderID {
-		m.setNoteListItems(msg.metas)
+	if m.expandedFolders[msg.folderID] {
+		m.rebuildNavItems()
 		m.status = ""
 	}
 	return m, nil
@@ -409,8 +413,8 @@ func (m Model) handleNoteSaved(msg noteSavedMsg) (tea.Model, tea.Cmd) {
 		metas = append([]notes.NoteMeta{msg.note.NoteMeta}, metas...)
 	}
 	m.noteMetaCache[msg.folderID] = metas
-	if msg.folderID == m.selectedFolderID {
-		m.setNoteListItems(metas)
+	if m.expandedFolders[msg.folderID] {
+		m.rebuildNavItems()
 	}
 	m.currentNote = msg.note
 	m.haveNote = true
@@ -436,8 +440,8 @@ func (m Model) handleNoteDeleted(msg noteDeletedMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	m.noteMetaCache[msg.folderID] = kept
-	if msg.folderID == m.selectedFolderID {
-		m.setNoteListItems(kept)
+	if m.expandedFolders[msg.folderID] {
+		m.rebuildNavItems()
 	}
 	if m.haveNote && m.currentNote.ID == msg.noteID {
 		m.haveNote = false
@@ -468,15 +472,14 @@ func (m Model) handleSearchResults(msg searchResultsMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) refresh() (tea.Model, tea.Cmd) {
-	if m.focus == focusFolders {
-		m.status = "Refreshing folders..."
-		return m, loadAccountsCmd(m.client)
+	cmds := []tea.Cmd{loadAccountsCmd(m.client)}
+	for folderID, expanded := range m.expandedFolders {
+		if expanded {
+			cmds = append(cmds, loadNotesCmd(m.client, folderID))
+		}
 	}
-	if m.selectedFolderID == "" {
-		return m, nil
-	}
-	m.status = "Refreshing notes..."
-	return m, loadNotesCmd(m.client, m.selectedFolderID)
+	m.status = "Refreshing..."
+	return m, tea.Batch(cmds...)
 }
 
 func (m *Model) resize() {
@@ -488,24 +491,19 @@ func (m *Model) resize() {
 	if innerH < 3 {
 		innerH = 3
 	}
-	remaining := m.width - chromePerPane*3
+	remaining := m.width - chromePerPane*2
 	if remaining < 30 {
 		remaining = 30
 	}
-	folderW := remaining * 22 / 100
-	if folderW < 16 {
-		folderW = 16
+	navW := remaining * 32 / 100
+	if navW < 24 {
+		navW = 24
 	}
-	noteW := remaining * 30 / 100
-	if noteW < 20 {
-		noteW = 20
-	}
-	editorW := remaining - folderW - noteW
+	editorW := remaining - navW
 	if editorW < 20 {
 		editorW = 20
 	}
-	m.folderList.SetSize(folderW, innerH)
-	m.noteList.SetSize(noteW, innerH)
+	m.navList.SetSize(navW, innerH)
 	m.editor.SetWidth(editorW)
 	m.editor.SetHeight(innerH)
 	if m.haveSearchList {
@@ -531,8 +529,7 @@ func (m Model) View() tea.View {
 		return v
 	}
 
-	folderPane := m.renderPane("Folders", m.folderList.View(), m.focus == focusFolders)
-	notePane := m.renderPane("Notes", m.noteList.View(), m.focus == focusNotes)
+	navPane := m.renderPane("Navigation", m.navList.View(), m.focus == focusNav)
 
 	editorContent := m.editor.View()
 	if !m.haveNote && !m.editing {
@@ -544,7 +541,7 @@ func (m Model) View() tea.View {
 	}
 	editorPane := m.renderPane(editorLabel, editorContent, m.focus == focusEditor)
 
-	row := lipgloss.JoinHorizontal(lipgloss.Top, folderPane, notePane, editorPane)
+	row := lipgloss.JoinHorizontal(lipgloss.Top, navPane, editorPane)
 	v := tea.NewView(row + "\n" + m.statusBar())
 	v.AltScreen = true
 	return v
@@ -565,5 +562,5 @@ func (m Model) statusBar() string {
 		}
 		return statusStyle.Render(m.status)
 	}
-	return statusStyle.Render("tab: switch pane · enter: open · n: new · e: edit · ctrl+s: save · d: delete · S: search · r: refresh · q: quit")
+	return statusStyle.Render("tab: switch pane · enter: open/expand · n: new · e: edit · ctrl+s: save · d: delete · S: search · r: refresh · q: quit")
 }

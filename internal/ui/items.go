@@ -2,36 +2,54 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"tuinotes/internal/notes"
 )
 
-// folderItem adapts notes.Folder to list.Item / list.DefaultItem.
-type folderItem struct {
+// folderNavItem is a folder row in the navigation tree. Depth is the
+// folder's nesting level (0 = top-level); Expanded controls the
+// disclosure marker and whether its notes are shown beneath it.
+type folderNavItem struct {
 	notes.Folder
+	Depth    int
+	Expanded bool
 }
 
-func (f folderItem) FilterValue() string { return f.Name }
-func (f folderItem) Title() string       { return f.Name }
-func (f folderItem) Description() string { return "" }
+func (f folderNavItem) FilterValue() string { return f.Name }
 
-// noteItem adapts notes.NoteMeta to list.Item / list.DefaultItem.
-type noteItem struct {
-	meta notes.NoteMeta
-}
-
-func (n noteItem) FilterValue() string { return n.meta.Name }
-
-func (n noteItem) Title() string {
-	if n.meta.HasAttachments() {
-		return n.meta.Name + " 📎"
+func (f folderNavItem) Title() string {
+	marker := "▸"
+	if f.Expanded {
+		marker = "▾"
 	}
-	return n.meta.Name
+	return strings.Repeat("  ", f.Depth) + marker + " " + f.Name
 }
 
-func (n noteItem) Description() string {
-	return timeAgo(n.meta.ModifiedAt)
+func (f folderNavItem) Description() string { return "" }
+
+// noteNavItem is a note row nested beneath its (expanded) folder in the
+// navigation tree. Depth is the note's own indentation level, i.e. one
+// deeper than its parent folder's Depth.
+type noteNavItem struct {
+	meta     notes.NoteMeta
+	FolderID string
+	Depth    int
+}
+
+func (n noteNavItem) FilterValue() string { return n.meta.Name }
+
+func (n noteNavItem) Title() string {
+	name := n.meta.Name
+	if n.meta.HasAttachments() {
+		name += " 📎"
+	}
+	return strings.Repeat("  ", n.Depth) + "  " + name
+}
+
+func (n noteNavItem) Description() string {
+	return strings.Repeat("  ", n.Depth) + "  " + timeAgo(n.meta.ModifiedAt)
 }
 
 // searchItem adapts a notes.SearchResult to list.Item / list.DefaultItem for

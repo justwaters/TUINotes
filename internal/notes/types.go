@@ -8,10 +8,14 @@ type Account struct {
 	Name string
 }
 
-// Folder is a top-level or nested Notes folder.
+// Folder is a top-level or nested Notes folder. ParentID is either the
+// owning Account's ID (a top-level folder) or another Folder's ID (a
+// nested folder) — Notes.app returns every folder in an account flattened,
+// so this is the only way to reconstruct the real folder tree.
 type Folder struct {
-	ID   string
-	Name string
+	ID       string
+	Name     string
+	ParentID string
 }
 
 // NoteMeta is the lightweight metadata fetched when listing a folder's

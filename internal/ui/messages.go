@@ -11,6 +11,9 @@ type accountsLoadedMsg struct {
 type folderWithAccount struct {
 	notes.Folder
 	AccountID string
+	// Depth is the folder's nesting level (0 = top-level). Set by
+	// orderFoldersAsTree, not by the load command.
+	Depth int
 }
 
 type notesLoadedMsg struct {

@@ -41,19 +41,23 @@ Notes**, then restart TUINotes.
 
 ## Keybindings
 
+TUINotes has two panes: a **Navigation** tree (folders, with each expanded
+folder's notes nested underneath) and a **Note** pane showing the open
+note's content.
+
 | Key | Action |
 |---|---|
-| `tab` / `shift+tab` | Switch pane (folders → notes → note) |
-| `↑`/`↓`, `j`/`k` | Navigate the focused list |
-| `enter` | Open the selected folder or note |
+| `tab` / `shift+tab` | Switch pane (navigation ↔ note) |
+| `↑`/`↓`, `j`/`k` | Navigate the tree |
+| `enter` | Expand/collapse a folder, or open a note |
 | `/` | Filter the focused list |
-| `n` | Create a new note in the selected folder |
+| `n` | Create a new note in the selected/parent folder |
 | `e` | Edit the open note |
 | `ctrl+s` | Save |
 | `esc` | Cancel editing / close an overlay |
 | `d` then `y` | Delete the selected note (moves to Recently Deleted) |
 | `S` | Search all notes in the first account (then `/` to filter, `enter` to open) |
-| `r` | Refresh the current pane |
+| `r` | Refresh the tree and any expanded folders |
 | `q` / `ctrl+c` | Quit |
 
 ## How it works
@@ -76,5 +80,6 @@ matching how Notes.app itself works), via `internal/convert`.
 - **Search relevance is rough.** The `/` filter in the search overlay does
   fuzzy subsequence matching against full note bodies, so short queries can
   surface loosely-related notes.
-- **No folder nesting or note moving in the UI.** `internal/notes` has a
-  `MoveNote` function but there's no keybinding for it yet.
+- **No note moving in the UI.** `internal/notes` has a `MoveNote` function
+  but there's no keybinding for it yet. Nested folders do display correctly
+  in the navigation tree (indented under their parent, matching Notes.app).
