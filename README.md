@@ -16,6 +16,23 @@ go build -o bin/tuinotes ./cmd/tuinotes
 ./bin/tuinotes
 ```
 
+### Installing so `tuinotes` works from anywhere
+
+Either drop the built binary somewhere already on your `PATH` (e.g.
+`~/.local/bin`):
+
+```sh
+go build -o ~/.local/bin/tuinotes ./cmd/tuinotes
+```
+
+or use `go install`, which puts it in `$(go env GOPATH)/bin` (typically
+`~/go/bin`) — add that to your `PATH` once if it isn't already:
+
+```sh
+echo 'export PATH="$HOME/go/bin:$PATH"' >> ~/.zshrc
+go install ./cmd/tuinotes
+```
+
 The first time TUINotes talks to Notes.app, macOS will prompt your terminal
 app (Terminal, iTerm, etc. — not TUINotes itself) for permission to send it
 Apple events. If you miss the prompt or deny it, grant it manually under
