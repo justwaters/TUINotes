@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"tuinotes/internal/notes"
+	"github.com/justwaters/TUINotes/internal/notes"
 )
 
 // folderNavItem is a folder row in the navigation tree. Depth is the

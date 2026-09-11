@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"tuinotes/internal/notes"
+	"github.com/justwaters/TUINotes/internal/notes"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/list"

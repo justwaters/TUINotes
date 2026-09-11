@@ -1,4 +1,4 @@
-module tuinotes
+module github.com/justwaters/TUINotes
 
 go 1.27.1
 

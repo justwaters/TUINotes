@@ -1,6 +1,6 @@
 package ui
 
-import "tuinotes/internal/notes"
+import "github.com/justwaters/TUINotes/internal/notes"
 
 type accountsLoadedMsg struct {
 	accounts []notes.Account

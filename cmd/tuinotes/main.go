@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"tuinotes/internal/notes"
-	"tuinotes/internal/ui"
+	"github.com/justwaters/TUINotes/internal/notes"
+	"github.com/justwaters/TUINotes/internal/ui"
 
 	tea "charm.land/bubbletea/v2"
 )

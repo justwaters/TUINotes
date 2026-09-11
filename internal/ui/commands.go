@@ -3,7 +3,7 @@ package ui
 import (
 	"context"
 
-	"tuinotes/internal/notes"
+	"github.com/justwaters/TUINotes/internal/notes"
 
 	tea "charm.land/bubbletea/v2"
 )

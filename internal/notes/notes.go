@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"tuinotes/internal/convert"
+	"github.com/justwaters/TUINotes/internal/convert"
 )
 
 // dateLayout matches the ISO 8601 strings produced by JSON.stringify(Date)
