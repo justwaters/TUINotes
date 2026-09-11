@@ -33,10 +33,13 @@
       Notes.app directly — your folders, your notes, no export or second copy.
     </p>
 
-    <div class="install-line">
-      <span class="prompt">$</span>
-      <code>go install github.com/justwaters/TUINotes/cmd/tuinotes@latest<span class="cursor" aria-hidden="true"></span></code>
-    </div>
+    <button type="button" class="install-line" data-copy="go install github.com/justwaters/TUINotes/cmd/tuinotes@latest" aria-label="Copy install command to clipboard">
+      <span class="install-cmd">
+        <span class="prompt">$</span>
+        <code>go install github.com/justwaters/TUINotes/cmd/tuinotes@latest<span class="cursor" aria-hidden="true"></span></code>
+      </span>
+      <span class="copy-label">copy</span>
+    </button>
     <div class="hero-links">
       <a href="https://github.com/justwaters/TUINotes">View source ↗</a>
       <a href="https://github.com/justwaters/TUINotes#readme">Read the docs ↗</a>
@@ -176,5 +179,23 @@
   <a href="https://github.com/justwaters/TUINotes">github.com/justwaters/TUINotes</a>
 </footer>
 
+<script>
+  const installButton = document.querySelector('.install-line');
+  const copyLabel = installButton.querySelector('.copy-label');
+  installButton.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(installButton.dataset.copy);
+    } catch {
+      return;
+    }
+    installButton.classList.add('copied');
+    copyLabel.textContent = 'copied';
+    clearTimeout(installButton._resetTimer);
+    installButton._resetTimer = setTimeout(() => {
+      installButton.classList.remove('copied');
+      copyLabel.textContent = 'copy';
+    }, 1600);
+  });
+</script>
 </body>
 </html>
