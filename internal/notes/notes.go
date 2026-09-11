@@ -61,11 +61,14 @@ func (c *Client) ListNoteMetas(ctx context.Context, folderID string) ([]NoteMeta
 }
 
 // wireNote mirrors the JSON shape returned by get_note.js, create_note.js
-// and update_note.js.
+// and update_note.js: the raw HTML body, so list markup (bullets, dashes,
+// numbers) survives into the editable text via convert.HTMLToLines. Plain
+// plaintext would lose it — Notes.app strips all list structure from that
+// property.
 type wireNote struct {
 	ID               string `json:"id"`
 	Name             string `json:"name"`
-	Plaintext        string `json:"plaintext"`
+	Body             string `json:"body"`
 	ModificationDate string `json:"modificationDate"`
 	AttachmentCount  int    `json:"attachmentCount"`
 	FolderID         string `json:"folderId"`
@@ -77,6 +80,10 @@ func (w wireNote) toNote() (Note, error) {
 	if err != nil {
 		return Note{}, err
 	}
+	lines, err := convert.HTMLToLines(w.Body)
+	if err != nil {
+		return Note{}, fmt.Errorf("notes: parsing body of %q: %w", w.Name, err)
+	}
 	return Note{
 		NoteMeta: NoteMeta{
 			ID:              w.ID,
@@ -84,7 +91,7 @@ func (w wireNote) toNote() (Note, error) {
 			ModifiedAt:      modAt,
 			AttachmentCount: w.AttachmentCount,
 		},
-		PlainBody:  trimTrailingNewline(w.Plaintext),
+		PlainBody:  trimTrailingNewline(lines),
 		FolderID:   w.FolderID,
 		FolderName: w.FolderName,
 	}, nil
@@ -157,8 +164,31 @@ type SearchResult struct {
 	Note
 }
 
-// wireSearchResult mirrors the JSON shape returned by search_all.js.
-type wireSearchResult = wireNote
+// wireSearchResult mirrors the JSON shape returned by search_all.js. Unlike
+// wireNote, this uses the plaintext property directly (list markup is
+// irrelevant for a search index, and plaintext is far cheaper to fetch in
+// bulk than parsing every note's HTML body).
+type wireSearchResult struct {
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	Plaintext        string `json:"plaintext"`
+	ModificationDate string `json:"modificationDate"`
+	FolderID         string `json:"folderId"`
+	FolderName       string `json:"folderName"`
+}
+
+func (w wireSearchResult) toSearchResult() (SearchResult, error) {
+	modAt, err := parseDate(w.ModificationDate)
+	if err != nil {
+		return SearchResult{}, err
+	}
+	return SearchResult{Note: Note{
+		NoteMeta:   NoteMeta{ID: w.ID, Name: w.Name, ModifiedAt: modAt},
+		PlainBody:  trimTrailingNewline(w.Plaintext),
+		FolderID:   w.FolderID,
+		FolderName: w.FolderName,
+	}}, nil
+}
 
 // SearchAll fetches id/name/plaintext/modified-date/folder for every note
 // in an account in one pass (one Apple Event per folder), so free-text
@@ -171,11 +201,11 @@ func (c *Client) SearchAll(ctx context.Context, accountID string) ([]SearchResul
 	}
 	results := make([]SearchResult, len(wire))
 	for i, w := range wire {
-		n, err := w.toNote()
+		r, err := w.toSearchResult()
 		if err != nil {
 			return nil, err
 		}
-		results[i] = SearchResult{Note: n}
+		results[i] = r
 	}
 	return results, nil
 }

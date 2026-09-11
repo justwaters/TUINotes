@@ -6,7 +6,7 @@ function run(argv) {
   return JSON.stringify({
     id: note.id(),
     name: note.name(),
-    plaintext: note.plaintext(),
+    body: note.body(),
     modificationDate: note.modificationDate(),
     attachmentCount: note.attachments().length,
     folderId: container.id(),

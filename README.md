@@ -64,15 +64,23 @@ note's content.
 
 There's no public API or documented file format for Apple Notes, so
 TUINotes shells out to `osascript -l JavaScript` (JXA) for every read and
-write — see `internal/notes`. Note bodies are HTML internally; TUINotes only
-ever reads/writes plain per-line text (the first line is the note's title,
-matching how Notes.app itself works), via `internal/convert`.
+write — see `internal/notes`. Note bodies are HTML internally; TUINotes
+reads and writes a plain-text representation of that HTML (the first line
+is the note's title, matching how Notes.app itself works) via
+`internal/convert`.
+
+Lists round-trip: prefix a line with `* ` for a bulleted list, `- ` for a
+dashed list, or `1. ` for a numbered list, and consecutive lines of the
+same kind become one list when saved — matching the actual (undocumented)
+HTML Notes.app uses for each. Existing lists in a note show up the same
+way when you open it.
 
 ## v1 limitations
 
-- **No rich formatting.** Saving a note always rewrites its body as plain
-  text lines. Bold, italics, headings, and checklists applied in the Notes
-  app will be lost if you edit and save that note in TUINotes.
+- **No checklists yet, and no other rich formatting.** Bold, italics,
+  headings, colors, and checklists applied in the Notes app are dropped to
+  plain text if you edit and save that note in TUINotes (lists are the
+  exception — see above).
 - **No attachment editing.** Notes with attachments (images, scans,
   drawings, tables) open in view-only mode — TUINotes refuses to save over
   them, since it has no way to preserve attachment markup.
