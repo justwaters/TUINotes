@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TUINotes — Apple Notes, from the terminal</title>
+<meta name="description" content="TUINotes is a terminal UI for Apple Notes, written in Go. It reads and writes your real Notes.app data directly — no export, no sync, no second copy.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Martian+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="topbar">
+  <div class="wrap topbar-row">
+    <a class="wordmark" href="#top">tuinotes</a>
+    <nav class="topnav">
+      <a href="#how-it-works">How it works</a>
+      <a href="#keys">Keys</a>
+      <a href="#limits">Limits</a>
+      <a href="https://github.com/justwaters/TUINotes">Source ↗</a>
+    </nav>
+  </div>
+</div>
+
+<main id="top">
+  <section class="hero wrap" style="border-top: none; padding-bottom: 0;">
+    <h1>The same notes.<br>A different room.</h1>
+    <p class="lede">
+      TUINotes is a terminal UI for Apple Notes, written in Go. It talks to
+      Notes.app directly — your folders, your notes, no export or second copy.
+    </p>
+
+    <div class="install-line">
+      <span class="prompt">$</span>
+      <code>go install github.com/justwaters/TUINotes/cmd/tuinotes@latest<span class="cursor" aria-hidden="true"></span></code>
+    </div>
+    <div class="hero-links">
+      <a href="https://github.com/justwaters/TUINotes">View source ↗</a>
+      <a href="https://github.com/justwaters/TUINotes#readme">Read the docs ↗</a>
+    </div>
+
+    <div class="terminal" role="img" aria-label="TUINotes running in a terminal: a Navigation pane listing folders and notes, with a note titled Release checklist open in the right-hand pane, and a keybinding status bar at the bottom.">
+      <div class="terminal-row">
+        <div class="term-pane">
+          <p class="term-pane-title">Navigation</p>
+          <div class="nav-row"><span class="marker">▸</span> Engineering</div>
+          <div class="nav-row current"><span class="marker">▾</span> Notes</div>
+          <div class="nav-row note">    Release checklist  2h ago</div>
+          <div class="nav-row note">    Standup notes  1d ago</div>
+          <div class="nav-row note">    Q3 roadmap  3d ago</div>
+          <div class="nav-row"><span class="marker">▸</span> Recipes</div>
+          <div class="nav-row"><span class="marker">▸</span> Travel</div>
+        </div>
+        <div class="term-pane note-body">
+          <p class="term-pane-title focused">Note</p>
+          <p class="note-title">Release checklist</p>
+          <p class="list-item bullet">Tag the release</p>
+          <p class="list-item bullet">Update the changelog</p>
+          <p class="list-item bullet">Notify the team</p>
+          <p></p>
+          <p class="list-item dash">Known issue: dark mode flicker</p>
+          <p class="list-item dash">Ship the blog post next week</p>
+        </div>
+      </div>
+      <div class="term-status">tab: switch pane · enter: open/expand · n: new · e: edit · ctrl+s: save · d: delete · S: search · r: refresh · q: quit</div>
+    </div>
+  </section>
+
+  <section class="wrap" id="how-it-works">
+    <h2>How it talks to Notes.app</h2>
+    <p>
+      There's no public API for Apple Notes, and its database is
+      undocumented and partially encrypted, so reading it directly means
+      guessing at a format Apple can change on any update. TUINotes uses
+      the same door Notes.app already leaves open to itself.
+    </p>
+    <ol class="pipeline">
+      <li>
+        <span class="num">1</span>
+        <span class="step"><strong>TUINotes runs a small script through <code>osascript</code></strong>
+        <p>The automation tool built into every Mac, the same one behind countless menu-bar utilities and Shortcuts.</p></span>
+      </li>
+      <li>
+        <span class="num">2</span>
+        <span class="step"><strong>Notes.app receives it as a native Apple Event</strong>
+        <p>The same channel its own AppleScript support has offered for years, and reads or writes the note.</p></span>
+      </li>
+      <li>
+        <span class="num">3</span>
+        <span class="step"><strong>The result comes back as JSON</strong>
+        <p>TUINotes turns it into the two panes you're looking at.</p></span>
+      </li>
+    </ol>
+    <div class="aside">
+      Notes save as plain text, with one exception: lines starting with
+      <code>* </code>, <code>- </code>, or <code>1. </code> become real
+      bulleted, dashed, or numbered lists — matching the exact HTML
+      Notes.app uses for each, reverse-engineered from real notes since
+      Apple never documented it.
+    </div>
+  </section>
+
+  <section class="wrap" id="keys">
+    <h2>Every action is a key</h2>
+    <p>Two panes: a Navigation tree on the left, the open note on the right.</p>
+    <table class="keys">
+      <tbody>
+        <tr><td class="key">tab</td><td class="desc">Switch pane</td></tr>
+        <tr><td class="key">↑ ↓ / j k</td><td class="desc">Move</td></tr>
+        <tr><td class="key">enter</td><td class="desc">Expand a folder, or open a note</td></tr>
+        <tr><td class="key">/</td><td class="desc">Filter</td></tr>
+        <tr><td class="key">n</td><td class="desc">New note</td></tr>
+        <tr><td class="key">e</td><td class="desc">Edit</td></tr>
+        <tr><td class="key">ctrl+s</td><td class="desc">Save</td></tr>
+        <tr><td class="key">esc</td><td class="desc">Cancel</td></tr>
+        <tr><td class="key">d, y</td><td class="desc">Delete (moves to Recently Deleted)</td></tr>
+        <tr><td class="key">S</td><td class="desc">Search everything</td></tr>
+        <tr><td class="key">r</td><td class="desc">Refresh</td></tr>
+        <tr><td class="key">q</td><td class="desc">Quit</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="wrap" id="limits">
+    <h2>What it won't do</h2>
+    <p>Nothing here is hidden until it breaks on you.</p>
+    <ul class="limits">
+      <li>
+        <strong>Checklists show up as plain bulleted lists.</strong>
+        Apple's automation interface doesn't expose checklist state at
+        all — a checklist's underlying HTML is identical to a bulleted
+        list — so there's nothing for TUINotes to tell apart or preserve.
+      </li>
+      <li>
+        <strong>Notes with attachments open read-only.</strong>
+        Images, scans, and drawings stay untouched — TUINotes won't save
+        over a note it can't fully represent.
+      </li>
+      <li>
+        <strong>Bold, italics, and headings are dropped to plain text.</strong>
+        Lists are the only formatting that survives a save.
+      </li>
+      <li>
+        <strong>Search covers one account.</strong>
+        If you split notes across iCloud and On My Mac, only the first is indexed.
+      </li>
+    </ul>
+  </section>
+
+  <section class="wrap get-running" id="get-running">
+    <h2>Get it running</h2>
+    <div class="steps">
+      <div>
+        <p style="margin-bottom: 10px;">Requires macOS with Notes.app and Go 1.24+.</p>
+        <pre class="cmd"><span class="prompt">$</span> go install github.com/justwaters/TUINotes/cmd/tuinotes@latest</pre>
+      </div>
+      <div>
+        <p style="margin-bottom: 10px;">Or build it from source:</p>
+        <pre class="cmd"><span class="prompt">$</span> git clone https://github.com/justwaters/TUINotes
+<span class="prompt">$</span> cd TUINotes && go build -o tuinotes ./cmd/tuinotes</pre>
+      </div>
+      <p>
+        The first time TUINotes talks to Notes.app, macOS will ask your
+        terminal for permission to send it Apple events — that's expected,
+        not TUINotes asking for anything unusual.
+      </p>
+    </div>
+  </section>
+</main>
+
+<footer class="wrap">
+  <span>TUINotes — built with Go and Bubble Tea.</span>
+  <a href="https://github.com/justwaters/TUINotes">github.com/justwaters/TUINotes</a>
+</footer>
+
+</body>
+</html>
