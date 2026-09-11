@@ -60,7 +60,10 @@ type Model struct {
 
 // New builds the initial Model. Loading real data happens in Init/Update.
 func New(client *notes.Client) Model {
-	navList := list.New(nil, list.NewDefaultDelegate(), 20, 10)
+	navDelegate := list.NewDefaultDelegate()
+	navDelegate.ShowDescription = false
+	navDelegate.SetSpacing(0)
+	navList := list.New(nil, navDelegate, 20, 10)
 	navList.SetShowTitle(false)
 	navList.SetShowStatusBar(false)
 	navList.SetShowHelp(false)

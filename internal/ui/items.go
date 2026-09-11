@@ -45,12 +45,10 @@ func (n noteNavItem) Title() string {
 	if n.meta.HasAttachments() {
 		name += " 📎"
 	}
-	return strings.Repeat("  ", n.Depth) + "  " + name
+	return strings.Repeat("  ", n.Depth) + "  " + name + "  " + timeAgo(n.meta.ModifiedAt)
 }
 
-func (n noteNavItem) Description() string {
-	return strings.Repeat("  ", n.Depth) + "  " + timeAgo(n.meta.ModifiedAt)
-}
+func (n noteNavItem) Description() string { return "" }
 
 // searchItem adapts a notes.SearchResult to list.Item / list.DefaultItem for
 // the global search overlay.
